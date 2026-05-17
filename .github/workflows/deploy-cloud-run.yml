@@ -1,0 +1,142 @@
+name: Deploy Ollama to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile
+      - scripts/**
+      - deploy/**
+      - .github/workflows/deploy-cloud-run.yml
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-run-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID || '' }}
+  REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  SERVICE_NAME: ${{ vars.GCP_SERVICE_NAME || 'ollama-qwen25-7b' }}
+  REPOSITORY: ${{ vars.GCP_ARTIFACT_REGISTRY_REPOSITORY || 'ollama-qwen25-7b' }}
+  ALLOW_UNAUTHENTICATED: "true"
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        run: |
+          set -Eeuo pipefail
+          missing=0
+
+          if [[ -z "${PROJECT_ID}" ]]; then
+            echo "Missing repository secret: GCP_PROJECT_ID"
+            missing=1
+          fi
+
+          if [[ -z "${{ secrets.GCP_SA_KEY }}" ]]; then
+            echo "Missing repository secret: GCP_SA_KEY"
+            missing=1
+          fi
+
+          if [[ "${REGION}" == "us-central1" ]]; then
+            echo "Using default REGION=us-central1"
+          fi
+
+          if [[ "${SERVICE_NAME}" == "ollama-qwen25-7b" ]]; then
+            echo "Using default SERVICE_NAME=ollama-qwen25-7b"
+          fi
+
+          if [[ "${REPOSITORY}" == "ollama-qwen25-7b" ]]; then
+            echo "Using default REPOSITORY=ollama-qwen25-7b"
+          fi
+
+          if [[ "${missing}" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure gcloud defaults
+        run: |
+          set -Eeuo pipefail
+          gcloud config set project "${PROJECT_ID}"
+          gcloud config set run/region "${REGION}"
+
+      - name: Ensure Artifact Registry repository exists
+        run: |
+          set -Eeuo pipefail
+
+          if gcloud artifacts repositories describe "${REPOSITORY}" --location "${REGION}" >/dev/null 2>&1; then
+            echo "Artifact Registry repository ${REPOSITORY} already exists in ${REGION}"
+          else
+            echo "Creating Artifact Registry repository ${REPOSITORY} in ${REGION}"
+            gcloud artifacts repositories create "${REPOSITORY}" \
+              --repository-format docker \
+              --location "${REGION}" \
+              --description "Ollama Qwen25-7B images"
+          fi
+
+      - name: Configure Artifact Registry auth
+        run: |
+          set -Eeuo pipefail
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Deploy to Cloud Run
+        run: |
+          set -Eeuo pipefail
+          chmod +x deploy/deploy-cloud-run.sh
+          PROJECT_ID="${PROJECT_ID}" \
+          REGION="${REGION}" \
+          SERVICE_NAME="${SERVICE_NAME}" \
+          REPOSITORY="${REPOSITORY}" \
+          ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED}" \
+          ./deploy/deploy-cloud-run.sh
+
+      - name: Smoke test service health
+        run: |
+          set -Eeuo pipefail
+          service_url="$(gcloud run services describe "${SERVICE_NAME}" --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')"
+
+          if [[ -z "${service_url}" ]]; then
+            echo "Could not resolve service URL"
+            exit 1
+          fi
+
+          echo "Service URL: ${service_url}"
+
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS "${service_url}/api/tags" >/dev/null; then
+              echo "Health check passed"
+              {
+                echo "## Deployment Succeeded"
+                echo "Service URL: ${service_url}"
+                echo "Health endpoint: ${service_url}/api/tags"
+              } >> "${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+
+            echo "Health check attempt ${attempt}/5 failed; retrying..."
+            sleep 10
+          done
+
+          echo "Health check failed after retries"
+          exit 1

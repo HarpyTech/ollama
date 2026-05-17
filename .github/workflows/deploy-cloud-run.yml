@@ -44,7 +44,7 @@ jobs:
             missing=1
           fi
 
-          if [[ -z "${{ secrets.GCP_SA_KEY }}" ]]; then
+          if [[ "${{ secrets.GCP_SA_KEY != '' }}" != "true" ]]; then
             echo "Missing repository secret: GCP_SA_KEY"
             missing=1
           fi

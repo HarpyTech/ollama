@@ -57,7 +57,7 @@ DEPLOY_ARGS=(
   --port 8080
   --cpu-boost
   --no-cpu-throttling
-  --set-env-vars "PORT=8080,OLLAMA_MODEL=qwen2.5:7b"
+  --set-env-vars "OLLAMA_MODEL=qwen2.5:7b"
 )
 
 if [[ "${ALLOW_UNAUTHENTICATED}" == "true" ]]; then

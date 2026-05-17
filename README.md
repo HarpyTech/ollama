@@ -12,7 +12,8 @@ This repository contains a production-focused container and deployment scripts t
 
 ## Architecture Notes
 
-- Service listens on `PORT=8080` for Cloud Run compatibility.
+- Service listens on Cloud Run port `8080`.
+- `PORT` is provided by Cloud Run automatically (do not set it via `--set-env-vars`).
 - Model auto-pull happens on startup (`OLLAMA_MODEL=qwen2.5:7b`).
 - Startup script includes retry logic and clear structured log messages.
 - Container has an internal health check against `/api/tags`.
@@ -106,7 +107,7 @@ gcloud run deploy ollama-qwen25-7b \
 	--port 8080 \
 	--cpu-boost \
 	--no-cpu-throttling \
-	--set-env-vars PORT=8080,OLLAMA_MODEL=qwen2.5:7b \
+	--set-env-vars OLLAMA_MODEL=qwen2.5:7b \
 	--allow-unauthenticated
 ```
 

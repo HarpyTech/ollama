@@ -6,8 +6,8 @@ ENV OLLAMA_MODEL="qwen2.5:7b" \
     PORT="8080" \
     OLLAMA_HOST="0.0.0.0:8080" \
     OLLAMA_KEEP_ALIVE="30m" \
-    OLLAMA_NUM_PARALLEL="4" \
-    OLLAMA_MAX_QUEUE="512"
+    OLLAMA_NUM_PARALLEL="8" \
+    OLLAMA_MAX_QUEUE="1024"
 
 COPY scripts/start.sh /usr/local/bin/start.sh
 COPY scripts/healthcheck.sh /usr/local/bin/healthcheck.sh

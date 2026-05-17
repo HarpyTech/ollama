@@ -14,6 +14,7 @@ This repository contains a production-focused container and deployment scripts t
 
 - Service listens on Cloud Run port `8080`.
 - `PORT` is provided by Cloud Run automatically (do not set it via `--set-env-vars`).
+- Ollama defaults to `OLLAMA_NUM_PARALLEL=8` so it can use the full 8 vCPU allocation on Cloud Run.
 - Model auto-pull happens on startup (`OLLAMA_MODEL=qwen2.5:7b`).
 - Startup script includes retry logic and clear structured log messages.
 - Container has an internal health check against `/api/tags`.
